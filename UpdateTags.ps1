@@ -11,7 +11,6 @@
 .NOTES
     Microsoft.PowerShell.ConsoleGuiTools Module is required for all Console User Interface components
     Az.Account & Az.Resources also required.
-    Script is supported on all OS consoles.
 .LINK
     Github link
 .EXAMPLE
@@ -25,10 +24,9 @@
 # Example
 #   $logFilePath = "c:\"
 #   $logFilePath = "\\server1\"
-$logFilePath = ".\Logs"     # current folder
+$logFilePath = ".\Logs\"     # current folder
 
 ######################################
-
 
 # Variable Initialization
 $AllTags = $null                    # Tags array
@@ -203,25 +201,28 @@ foreach ($selectedResource in $selectedResources) {
     Write-Log -Message "Searching for Tags in Resource: '$($selectedResource.Name)' - ResourceID: '$($selectedResource.Id)'" -OnlyLog
 
     # Prepraring hashtables
-    $oldTag = $null
-    $newTag = $null
+    
     $tagsNotFound = $null
     
     # Replace old tag with new tag keyname and value
     foreach ($selectedTag in $selectedTags) {
         
+        $oldTag = $null
+        $newTag = $null
+        
         $oldSelectedTagValue = $null
         $oldSelectedTagValue = $selectedResource.Tags.($selectedTag.Name)
 
         if ($selectedResource.Tags.($selectedTag.Name) -or $selectedResource.Tags.($selectedTag.Name) -eq "") {
-            $oldTag = @{[string]$selectedTag.Name = [string]$oldSelectedTagValue;}
+            $oldTag = @{[string]$selectedTag.Name = [string]$($oldSelectedTagValue);}
             $newTag = @{[string]$newKeyName = [string]$oldSelectedTagValue;}
+            
+            Update-AzTag -ResourceId $selectedResource.Id -Tag $newTag -Operation Merge
+            Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceID: '$($selectedResource.Id)'" -OnlyLog
 
             Update-AzTag -ResourceId $selectedResource.Id -Tag $oldTag -Operation Delete
             Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceID: '$($selectedResource.Id)'" -OnlyLog
 
-            Update-AzTag -ResourceId $selectedResource.Id -Tag $newTag -Operation Merge
-            Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceID: '$($selectedResource.Id)'" -OnlyLog
         }
         else {
             if (!$tagsNotFound) {
