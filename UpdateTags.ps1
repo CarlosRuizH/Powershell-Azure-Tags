@@ -206,8 +206,11 @@ foreach ($subscription in $subscriptions) {
 
 # Export all Resources found with any of the selected Tags to CSV log file
 Write-Log -Message "Search for all Resources with selected Tags completed." -OnlyLog
-$selectedResources | Export-Csv -Path $logModifiedResources
-Write-Log -Message "List of tagged Resources in CSV format created at: $($logModifiedResources)" -OnlyLog
+
+if($selectedResources){
+  $selectedResources | Export-Csv -Path $logModifiedResources 
+  Write-Log -Message "List of tagged Resources in CSV format created at: $($logModifiedResources)" -OnlyLog 
+}
 
 
 # Export all Resources Groups found with any of the selected Tags to CSV log file
