@@ -304,8 +304,8 @@ foreach ($selectedResourceGroup in $selectedResourceGroups) {
             $newTag = @{[string]$newKeyName = [string]$oldSelectedTagValue;}
             
             try {
-                Update-AzTag -ResourceId $selectedResourceGroup.Id -Tag $newTag -Operation Merge
-                Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceGroupID: '$($selectedResourceGroup.Id)'" -OnlyLog
+                Update-AzTag -ResourceId $selectedResourceGroup.ResourceId -Tag $newTag -Operation Merge
+                Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceGroupID: '$($selectedResourceGroup.ResourceId)'" -OnlyLog
             }
             catch {
                 Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be appended to ResourceGroupID: '$($selectedResourceGroup.Id)'"
@@ -316,11 +316,11 @@ foreach ($selectedResourceGroup in $selectedResourceGroups) {
             }
 
             try {
-                Update-AzTag -ResourceId $selectedResourceGroup.Id -Tag $oldTag -Operation Delete
-                Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceGroupID: '$($selectedResourceGroup.Id)'" -OnlyLog
+                Update-AzTag -ResourceId $selectedResourceGroup.ResourceId -Tag $oldTag -Operation Delete
+                Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceGroupID: '$($selectedResourceGroup.ResourceId)'" -OnlyLog
             }
             catch {
-                Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be removed from ResourceGroupID: '$($selectedResourceGroup.Id)'"
+                Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be removed from ResourceGroupID: '$($selectedResourceGroup.ResourceId)'"
                 $errorMessage = $_
                 Write-Log -Message "[ERROR] $($errorMessage)"
                 $logResourceGroupTagErrors += $selectedResourceGroup
