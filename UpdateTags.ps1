@@ -220,7 +220,7 @@ Write-Log -Message "List of tagged ResourceGroups in CSV format created at: $($l
 $ErrorActionPreference = "Continue" 
 
 $logResourceTagErrors = $null
-$logResourceGroupTagErrors = $null
+$logResourceGroupTagErrors = @()
 
 # Modify the tags for each of the Resources found
 foreach ($selectedResource in $selectedResources) {
@@ -340,12 +340,16 @@ foreach ($selectedResourceGroup in $selectedResourceGroups) {
 }
 
 # Save all errors found
-Write-Log -Message "List of Azure Resources with Tagging errors: $($logFilePath)UpdateTags-ResourceTagErrors$($logCreationTime).csv"
-$logResourceTagErrors | Export-Csv -Path $logResourceTagErrorsFile
 
-Write-Log -Message "List of modified Azure Resources with updated Tags: $($logFilePath)UpdateTags-ResourceGroupTagErrors$($logCreationTime).csv"
-$logResourceGroupTagErrors | Export-Csv -Path $logResourceGroupTagErrorsFile
+if ($logResourceTagErrors) {
+    Write-Log -Message "List of Azure Resources with Tagging errors: $($logFilePath)UpdateTags-ResourceTagErrors$($logCreationTime).csv"
+    $logResourceTagErrors | Export-Csv -Path $logResourceTagErrorsFile   
+}
 
+if ($logModifiedResourceGroups) {
+    Write-Log -Message "List of modified Azure Resources with updated Tags: $($logFilePath)UpdateTags-ResourceGroupTagErrors$($logCreationTime).csv"
+    $logResourceGroupTagErrors | Export-Csv -Path $logResourceGroupTagErrorsFile
+}
 
 # Finalize
 Write-Log -Message "Log File Created at: $($logFilePath)UpdateTags$($logCreationTime).log"
