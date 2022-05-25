@@ -36,14 +36,27 @@ $selectedResources = $null          # Resource array
 
 # Log files names
 $logCreationTime = Get-Date -Format "-yyyy.MM.dd-HH.mm"
-$logModifiedResources = "$($logFilePath)UpdateTags-ModifiedResources$($logCreationTime).csv"
-$logModifiedResourceGroups = "$($logFilePath)UpdateTags-ModifiedResourceGroups$($logCreationTime).csv"
-$logUpdateTags = "$($logFilePath)UpdateTags$($logCreationTime).log"
+$logModifiedResources = "$($logFilePath)UpdateTags-ModifiedResources$($logCreationTime).csv"                # All Resources with modified Tags
+$logModifiedResourceGroups = "$($logFilePath)UpdateTags-ModifiedResourceGroups$($logCreationTime).csv"      # All Resource Groups with modified Tags
+$logResourceTagErrorsFile = "$($logFilePath)UpdateTags-ResourceTagErrors$($logCreationTime).csv"
+$logResourceGroupTagErrorsFile = "$($logFilePath)UpdateTags-ResourceGroupTagErrors$($logCreationTime).csv"                                # Any tagging errors that may ocurr
+$logUpdateTags = "$($logFilePath)UpdateTags$($logCreationTime).log"                                         # Script Log file
 
 
 # Create the required Log files if they do not exist
-if ((Test-Path -Path $logModifiedResources) -eq $false) {New-Item $logModifiedResources}
-if ((Test-Path -Path $logModifiedResourceGroups) -eq $false) {New-Item $logModifiedResourceGroups}
+if ((Test-Path -Path $logFilePath) -eq $false) {
+    New-Item $logFilePath -ItemType "directory"
+    Write-Log "No '.\Logs' folder found. Creating new Logs folder."
+}
+
+if ((Test-Path -Path $logModifiedResources) -eq $false)         {New-Item $logModifiedResources}
+
+if ((Test-Path -Path $logModifiedResourceGroups) -eq $false)    {New-Item $logModifiedResourceGroups}
+
+if ((Test-Path -Path $logResourceTagErrorsFile) -eq $false)    {New-Item $logResourceTagErrorsFile}
+
+if ((Test-Path -Path $logResourceGroupTagErrorsFile) -eq $false)    {New-Item $logResourceGroupTagErrorsFile}
+
 if ((Test-Path -Path $logUpdateTags) -eq $false) {
     New-Item $logUpdateTags
     Add-Content -Value "Log File $($logUpdateTags) - UpdateTags.ps1" -Path $logUpdateTags
@@ -94,6 +107,7 @@ $VerbosePreference = "Continue"
 
 # --- Start ---
 # Connect to Azure
+# Add different Connection options
 try {
     Connect-AzAccount
     }
@@ -189,11 +203,24 @@ foreach ($subscription in $subscriptions) {
     }   
 }
 
+
 # Export all Resources found with any of the selected Tags to CSV log file
 Write-Log -Message "Search for all Resources with selected Tags completed." -OnlyLog
 $selectedResources | Export-Csv -Path $logModifiedResources
 Write-Log -Message "List of tagged Resources in CSV format created at: $($logModifiedResources)" -OnlyLog
 
+
+# Export all Resources Groups found with any of the selected Tags to CSV log file
+Write-Log -Message "Search for all ResourceGroups with selected Tags completed." -OnlyLog
+$selectedResourceGroups | Export-Csv -Path $logModifiedResourceGroups
+Write-Log -Message "List of tagged ResourceGroups in CSV format created at: $($logModifiedResourceGroups)" -OnlyLog
+
+
+# Prepare to catch any errors and continue
+$ErrorActionPreference = "Continue" 
+
+$logResourceTagErrors = $null
+$logResourceGroupTagErrors = $null
 
 # Modify the tags for each of the Resources found
 foreach ($selectedResource in $selectedResources) {
@@ -201,7 +228,6 @@ foreach ($selectedResource in $selectedResources) {
     Write-Log -Message "Searching for Tags in Resource: '$($selectedResource.Name)' - ResourceID: '$($selectedResource.Id)'" -OnlyLog
 
     # Prepraring hashtables
-    
     $tagsNotFound = $null
     
     # Replace old tag with new tag keyname and value
@@ -217,12 +243,30 @@ foreach ($selectedResource in $selectedResources) {
             $oldTag = @{[string]$selectedTag.Name = [string]$($oldSelectedTagValue);}
             $newTag = @{[string]$newKeyName = [string]$oldSelectedTagValue;}
             
-            Update-AzTag -ResourceId $selectedResource.Id -Tag $newTag -Operation Merge
-            Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceID: '$($selectedResource.Id)'" -OnlyLog
-
-            Update-AzTag -ResourceId $selectedResource.Id -Tag $oldTag -Operation Delete
-            Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceID: '$($selectedResource.Id)'" -OnlyLog
-
+            try {
+                Update-AzTag -ResourceId $selectedResource.Id -Tag $newTag -Operation Merge
+                Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceID: '$($selectedResource.Id)'" -OnlyLog
+            }
+            catch {
+                Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be appended to ResourceID: '$($selectedResource.Id)'"
+                $errorMessage = $_
+                Write-Log -Message "[ERROR] $($errorMessage)"
+                $logResourceTagErrors += $selectedResource
+                Write-Verbose -Message "Error Logged. Proceeding to next Resource..."
+            }
+            
+            try {
+                Update-AzTag -ResourceId $selectedResource.Id -Tag $oldTag -Operation Delete
+                Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceID: '$($selectedResource.Id)'" -OnlyLog
+            }
+            catch {
+                Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be removed from ResourceID: '$($selectedResource.Id)'"
+                $errorMessage = $_
+                Write-Log -Message "[ERROR] $($errorMessage)"
+                $logResourceTagErrors += $selectedResource
+                Write-Verbose -Message "Error Logged. Proceeding to next Resource..."
+            }
+            
         }
         else {
             if (!$tagsNotFound) {
@@ -243,12 +287,14 @@ foreach ($selectedResourceGroup in $selectedResourceGroups) {
     Write-Log -Message "Searching for Tags in ResourceGroup: '$($selectedResourceGroup.ResourceGroupName)' - ResourceID: '$($selectedResourceGroup.ResourceId)'" -OnlyLog
 
     # Prepraring hashtables
-    $oldTag = $null
-    $newTag = $null
+
     $tagsNotFound = $null
     
     # Replace old tag with new tag keyname and value
     foreach ($selectedTag in $selectedTags) {
+        
+        $oldTag = $null
+        $newTag = $null
         
         $oldSelectedTagValue = $null
         $oldSelectedTagValue = $selectedResourceGroup.Tags.($selectedTag.Name)
@@ -256,12 +302,30 @@ foreach ($selectedResourceGroup in $selectedResourceGroups) {
         if ($selectedResourceGroup.Tags.($selectedTag.Name) -or $selectedResourceGroup.Tags.($selectedTag.Name) -eq "") {
             $oldTag = @{[string]$selectedTag.Name = [string]$oldSelectedTagValue;}
             $newTag = @{[string]$newKeyName = [string]$oldSelectedTagValue;}
+            
+            try {
+                Update-AzTag -ResourceId $selectedResourceGroup.Id -Tag $newTag -Operation Merge
+                Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceGroupID: '$($selectedResourceGroup.Id)'" -OnlyLog
+            }
+            catch {
+                Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be appended to ResourceGroupID: '$($selectedResourceGroup.Id)'"
+                $errorMessage = $_
+                Write-Log -Message "[ERROR] $($errorMessage)"
+                $logResourceGroupTagErrors += $selectedResourceGroup
+                Write-Verbose -Message "Error Logged. Proceeding to next Resource Group..."
+            }
 
-            Update-AzTag -ResourceId $selectedResourceGroup.ResourceId -Tag $oldTag -Operation Delete
-            Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceID: '$($selectedResourceGroup.ResourceId)'" -OnlyLog
-
-            Update-AzTag -ResourceId $selectedResourceGroup.ResourceId -Tag $newTag -Operation Merge
-            Write-Log -Message "'$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' appended to ResourceID: '$($selectedResourceGroup.ResourceId)'" -OnlyLog
+            try {
+                Update-AzTag -ResourceId $selectedResourceGroup.Id -Tag $oldTag -Operation Delete
+                Write-Log -Message "'$($selectedTag.Name)' tag with tag value: '$($oldSelectedTagValue)' removed from ResourceGroupID: '$($selectedResourceGroup.Id)'" -OnlyLog
+            }
+            catch {
+                Write-Log -Message "[ERROR] '$($newKeyName)' tag with tag value: '$($oldSelectedTagValue)' could not be removed from ResourceGroupID: '$($selectedResourceGroup.Id)'"
+                $errorMessage = $_
+                Write-Log -Message "[ERROR] $($errorMessage)"
+                $logResourceGroupTagErrors += $selectedResourceGroup
+                Write-Verbose -Message "Error Logged. Proceeding to next Resource..."
+            }            
         }
         else {
             if (!$tagsNotFound) {
@@ -274,6 +338,13 @@ foreach ($selectedResourceGroup in $selectedResourceGroups) {
     }
     Write-Log -Message "Tags not found in this Resource Group: '$($tagsNotFound)'" -OnlyLog
 }
+
+# Save all errors found
+Write-Log -Message "List of Azure Resources with Tagging errors: $($logFilePath)UpdateTags-ResourceTagErrors$($logCreationTime).csv"
+$logResourceTagErrors | Export-Csv -Path $logResourceTagErrorsFile
+
+Write-Log -Message "List of modified Azure Resources with updated Tags: $($logFilePath)UpdateTags-ResourceGroupTagErrors$($logCreationTime).csv"
+$logResourceGroupTagErrors | Export-Csv -Path $logResourceGroupTagErrorsFile
 
 
 # Finalize
